@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: captcha-tls-app
+    env: python
+    plan: free
+    buildCommand: "pip install --no-cache-dir -r requirements.txt"
+    startCommand: "python app.py"
+    autoDeploy: true
+    region: us
+    envVars:
+      - key: PYTHONHTTPSVERIFY
+        value: "1"
+    timeoutSeconds: 300
