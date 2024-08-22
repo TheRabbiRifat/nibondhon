@@ -1,14 +1,13 @@
 services:
   - type: web
     name: captcha-tls-app
-    env: docker
+    env: python
     plan: free
-    buildCommand: "docker build -t captcha-tls-app ."
-    startCommand: "docker run -p 8080:8080 captcha-tls-app"
+    buildCommand: "pip install --no-cache-dir -r requirements.txt"
+    startCommand: "python app.py"
     autoDeploy: true
     region: us
     envVars:
       - key: PYTHONHTTPSVERIFY
         value: "1"
     timeoutSeconds: 300
-    port: 8080
