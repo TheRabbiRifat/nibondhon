@@ -16,14 +16,14 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install required Python packages
+# Copy and install required Python packages
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Stage 2: Production stage
 FROM python:3.11-slim
 
-# Install CA certificates
+# Install CA certificates and dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
     wget \
