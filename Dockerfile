@@ -1,21 +1,40 @@
-# Use an official Python runtime as a parent image
+# Stage 1: Build stage
+FROM python:3.11-slim as build-stage
+
+# Install system dependencies and CA certificates
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    build-essential \
+    libssl-dev \
+    libffi-dev \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies in a virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Install required Python packages
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Stage 2: Production stage
 FROM python:3.11-slim
 
-# Set environment variables to prevent Python from buffering stdout/stderr
-ENV PYTHONUNBUFFERED 1
+# Install CA certificates
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Set the working directory in the container
+# Copy the virtual environment from the build stage
+COPY --from=build-stage /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy the application code
+COPY app.py /app/app.py
+
+# Set the working directory
 WORKDIR /app
 
-# Copy the current directory contents into the container at /app
-COPY . /app
-
-# Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose the port that the Flask app runs on
-EXPOSE 8080
-
 # Run the application
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "app:app"]
-
+CMD ["python", "app.py"]
