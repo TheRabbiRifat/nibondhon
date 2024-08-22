@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements file and install dependencies
+# Copy the requirements file and install dependencies
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
@@ -36,8 +36,8 @@ COPY app.py /app/app.py
 # Set the working directory
 WORKDIR /app
 
-# Expose port 8080
+# Expose the port the app runs on
 EXPOSE 8080
 
-# Run the application
+# Command to run the application
 CMD ["python", "app.py"]
