@@ -41,7 +41,7 @@ def initiate_session():
     session_obj = requests.Session()
 
     # Initialize a session with the third-party website
-    url = 'https://example.com/initiate'  # Replace with the actual URL
+    url = 'https://everify.bdris.gov.bd'  # Replace with the actual URL
     response = session_obj.get(url, verify=False, timeout=10)
     
     # Process the response to extract the CAPTCHA and session ID
