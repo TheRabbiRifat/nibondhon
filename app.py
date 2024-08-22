@@ -42,10 +42,7 @@ def initiate_session():
 
     # Initialize a session with the third-party website
     url = 'https://everify.bdris.gov.bd'  # Replace with the actual URL
-    try:
-        response = session_obj.get(url, verify=False, timeout=20)  # SSL verification enabled
-    except requests.exceptions.SSLError as e:
-        return jsonify({'status': 'error', 'message': f'SSL Error: {str(e)}'}), 500
+    response = session_obj.get(url, verify=False, timeout=10)
     
     # Process the response to extract the CAPTCHA and session ID
     if response.status_code == 200:
@@ -57,14 +54,11 @@ def initiate_session():
         captcha_element = driver.find_element(By.ID, 'CaptchaImage')
         captcha_image = captcha_element.screenshot_as_png
         
-        # Convert CAPTCHA image to Base64 and determine the format
+        # Convert CAPTCHA image to Base64
         buffered = BytesIO(captcha_image)
         captcha_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-
-        # Determine image format (PNG in this example)
-        captcha_format = 'png'
-        data_url = f"data:image/{captcha_format};base64,{captcha_base64}"
-
+        captcha_image_type = "image/png"  # Assuming CAPTCHA image is PNG
+        
         # Save the session details
         session['session_id'] = session_obj.cookies.get_dict()
 
@@ -74,7 +68,7 @@ def initiate_session():
 
         return jsonify({
             'status': 'captcha_required',
-            'captcha_image': data_url,
+            'captcha_image': f"data:{captcha_image_type};base64,{captcha_base64}",
             'session_id': session['session_id']
         })
     else:
@@ -117,4 +111,4 @@ def submit_form():
     return jsonify({'status': 'success', 'result': result_html})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=True)
