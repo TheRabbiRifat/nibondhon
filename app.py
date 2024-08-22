@@ -1,68 +1,116 @@
-import base64
+from flask import Flask, request, jsonify, session
 import requests
-from flask import Flask, request, jsonify
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+import base64
+from io import BytesIO
+import time
+import threading
 
 app = Flask(__name__)
+app.secret_key = 'your_secret_key_here'  # Replace with a secure secret key
 
-# Set up session with TLS 1.2 support
-session = requests.Session()
-session.headers.update({'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'})
+# Configure Chrome options
+chrome_options = Options()
+chrome_options.add_argument("--headless")  # Run in headless mode
+chrome_options.add_argument("--disable-gpu")
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--disable-dev-shm-usage")
 
-@app.route('/initiate', methods=['POST'])
+# Global variable to store the session and WebDriver instances
+driver = None
+session_obj = None
+
+# Function to clean up the session after 5 minutes
+def cleanup_session():
+    global driver, session_obj
+    time.sleep(300)  # Wait for 5 minutes
+    if driver:
+        driver.quit()
+        driver = None
+    session_obj = None
+
+@app.route('/api/v1/initiate', methods=['POST'])
 def initiate_session():
-    url = 'https://everify.bdris.gov.bd'
+    global driver, session_obj
     
+    # Start a session
+    session_obj = requests.Session()
+
+    # Initialize a session with the third-party website
+    url = 'https://example.com/initiate'  # Replace with the actual URL
     try:
-        response = session.get(url, verify=False, timeout=50)
-        response.raise_for_status()
+        response = session_obj.get(url, verify=True, timeout=10)  # SSL verification enabled
+    except requests.exceptions.SSLError as e:
+        return jsonify({'status': 'error', 'message': f'SSL Error: {str(e)}'}), 500
+    
+    # Process the response to extract the CAPTCHA and session ID
+    if response.status_code == 200:
+        # Use Selenium to handle CAPTCHA if necessary
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver.get(url)
         
-        captcha_img_src = extract_captcha_image_src(response.text)
-        captcha_image_url = url + captcha_img_src
-        captcha_image = session.get(captcha_image_url, verify=True, timeout=10)
-        captcha_image.raise_for_status()
+        # Extract the CAPTCHA image
+        captcha_element = driver.find_element(By.ID, 'CaptchaImage')
+        captcha_image = captcha_element.screenshot_as_png
         
-        captcha_image_base64 = base64.b64encode(captcha_image.content).decode('utf-8')
-        
+        # Convert CAPTCHA image to Base64
+        buffered = BytesIO(captcha_image)
+        captcha_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+        # Save the session details
+        session['session_id'] = session_obj.cookies.get_dict()
+
+        # Start a thread to clean up the session after 5 minutes
+        cleanup_thread = threading.Thread(target=cleanup_session)
+        cleanup_thread.start()
+
         return jsonify({
             'status': 'captcha_required',
-            'captcha_image': captcha_image_base64
+            'captcha_image': captcha_base64,
+            'session_id': session['session_id']
         })
-    
-    except requests.exceptions.RequestException as e:
-        return jsonify({'error': 'Request Error', 'details': str(e)}), 500
+    else:
+        return jsonify({'status': 'error', 'message': 'Failed to initiate session'}), response.status_code
 
-@app.route('/submit', methods=['POST'])
+@app.route('/api/v1/submit', methods=['POST'])
 def submit_form():
+    global driver, session_obj
     data = request.json
     
-    form_data = {
-        'CaptchaInputText': data.get('captcha'),
-        'BirthDate': data.get('birth_date'),
-        'UBRN': data.get('serial_number')
-    }
+    # Retrieve session ID and create a session with it
+    session_id = data.get('session_id')
+    captcha_solution = data.get('captcha_solution')
+    birth_date = data.get('birth_date')
+    ubrn = data.get('ubrn')
     
-    try:
-        submit_url = 'https://everify.bdris.gov.bd/some_endpoint'
-        response = session.post(submit_url, data=form_data, verify=True, timeout=10)
-        response.raise_for_status()
-        
-        body_content = extract_body_content(response.text)
-        
-        return jsonify({
-            'status': 'success',
-            'content': body_content
-        })
+    if not session_id or not captcha_solution or not birth_date or not ubrn:
+        return jsonify({'status': 'error', 'message': 'Missing required fields'}), 400
+
+    # Start a session with the existing session ID
+    session_obj.cookies.update(session_id)
+
+    # Fill in the form fields
+    driver.find_element(By.ID, 'CaptchaInputText').send_keys(captcha_solution)
+    driver.find_element(By.ID, 'BirthDate').send_keys(birth_date)
+    driver.find_element(By.ID, 'ubrn').send_keys(ubrn)
     
-    except requests.exceptions.RequestException as e:
-        return jsonify({'error': 'Request Error', 'details': str(e)}), 500
+    # Submit the form
+    driver.find_element(By.CSS_SELECTOR, "input[type='submit']").click()
 
-def extract_captcha_image_src(html):
-    # Implement your logic to extract captcha image URL
-    return '/DefaultCaptcha/Generate?t=7009b429c55f4d6f9ee59119387c42f3'
+    # Extract the result from the page
+    result_element = driver.find_element(By.CSS_SELECTOR, ".body-content")
+    result_html = result_element.get_attribute('outerHTML')
 
-def extract_body_content(html):
-    # Implement your logic to extract the required div
-    return "Extracted body content here."
+    # Close the Selenium driver
+    driver.quit()
+    driver = None
+    session_obj = None
+
+    return jsonify({'status': 'success', 'result': result_html})
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, debug=False)
