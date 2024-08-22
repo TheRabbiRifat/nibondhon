@@ -13,7 +13,7 @@ def initiate_session():
     url = 'https://everify.bdris.gov.bd'
     
     try:
-        response = session.get(url, verify=True, timeout=10)
+        response = session.get(url, verify=False, timeout=50)
         response.raise_for_status()
         
         captcha_img_src = extract_captcha_image_src(response.text)
