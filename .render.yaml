@@ -1,12 +1,21 @@
 services:
   - type: web
-    name: my-flask-app
-    env: python
-    region: oregon
-    plan: free
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn -w 4 app:app"
-    envVars:
-      - key: SECRET_KEY
-        value: your_secret_key_here
+    name: flask-captcha-service
+    env: docker
+    plan: free  # You can change this to "starter" or another plan as needed
+    buildCommand: ""  # No build command needed as Dockerfile handles everything
+    startCommand: ""  # Dockerfile's CMD will handle the start command
+    dockerfilePath: ./Dockerfile
     autoDeploy: true
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        value: your_secret_key_here  # Replace with your actual secret key
+    healthCheckPath: /
+    disk:
+      - name: persistent-storage
+        mountPath: /var/lib/data
+        sizeGB: 1
+    timeoutSeconds: 900  # Adjust as necessary for your use case
+    allowPublicWebSockets: false  # Set to true if your app uses WebSockets
