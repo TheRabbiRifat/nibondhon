@@ -8,5 +8,4 @@ services:
     timeoutSeconds: 300
     envVars:
       - key: PYTHONHTTPSVERIFY
-        value: "1"
-      # Add any additional environment variables if needed
+        value: "0"
