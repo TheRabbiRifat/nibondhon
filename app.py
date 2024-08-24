@@ -27,6 +27,8 @@ def initiate_session():
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extract captcha image
         captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
         captcha_img_src = captcha_img_tag['src']
         captcha_image_url = url + captcha_img_src
@@ -37,10 +39,16 @@ def initiate_session():
         content_type = captcha_image.headers['Content-Type']
         captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
         
+        # Extract hidden inputs
+        hidden_inputs = {}
+        for hidden_input in soup.find_all("input", type="hidden"):
+            hidden_inputs[hidden_input.get("name")] = hidden_input.get("value", "")
+
         return jsonify({
             'status': 'captcha_required',
             'captcha_image': captcha_image_base64,
-            'session_id': session.sid
+            'session_id': session.sid,
+            'hidden_inputs': hidden_inputs  # Include hidden inputs in the response
         })
     
     except requests.exceptions.RequestException as e:
@@ -60,6 +68,10 @@ def submit_form():
         'UBRN': data.get('serial_number')
     }
     
+    # Add hidden fields back to form_data
+    hidden_inputs = data.get('hidden_inputs', {})
+    form_data.update(hidden_inputs)
+
     try:
         # Use the existing session and page to submit the form
         previous_page_url = 'https://everify.bdris.gov.bd'
