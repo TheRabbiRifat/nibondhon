@@ -1,12 +1,8 @@
 import base64
-import asyncio
 import requests
 from flask import Flask, request, jsonify, session
 from flask_session import Session
-from pyppeteer import launch
 from bs4 import BeautifulSoup
-import io
-from PIL import Image
 
 app = Flask(__name__)
 
@@ -15,28 +11,6 @@ app.config['SESSION_TYPE'] = 'filesystem'
 app.config['SECRET_KEY'] = 'your_secret_key_here'
 app.config['PERMANENT_SESSION_LIFETIME'] = 300  # 5 minutes
 Session(app)
-
-async def get_captcha_image(url, session):
-    browser = await launch(headless=True)
-    page = await browser.newPage()
-    await page.goto(url)
-    
-    # Take a screenshot of the captcha image
-    captcha_image_path = '/tmp/captcha_image.png'
-    captcha_element = await page.querySelector('#CaptchaImage')
-    if captcha_element:
-        await captcha_element.screenshot({'path': captcha_image_path})
-    
-    await browser.close()
-    
-    # Convert image to base64
-    with open(captcha_image_path, 'rb') as f:
-        image_data = f.read()
-    
-    content_type = 'image/png'
-    captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(image_data).decode('utf-8')
-    
-    return captcha_image_base64
 
 @app.route('/initiate', methods=['POST'])
 def initiate_session():
@@ -53,12 +27,18 @@ def initiate_session():
         response.raise_for_status()
         
         soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Use Pyppeteer to get captcha image
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        captcha_image_base64 = loop.run_until_complete(get_captcha_image(url, session))
 
+        # Extract captcha image
+        captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
+        captcha_img_src = captcha_img_tag['src']
+        captcha_image_url = url + captcha_img_src
+
+        captcha_image = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
+        captcha_image.raise_for_status()
+
+        content_type = captcha_image.headers['Content-Type']
+        captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
+        
         # Extract hidden inputs
         hidden_inputs = {}
         for hidden_input in soup.find_all("input", type="hidden"):
