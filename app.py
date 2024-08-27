@@ -3,8 +3,6 @@ import requests
 from flask import Flask, request, jsonify, session
 from flask_session import Session
 from bs4 import BeautifulSoup
-from weasyprint import HTML
-import fitz  # PyMuPDF
 
 app = Flask(__name__)
 
@@ -17,39 +15,30 @@ Session(app)
 @app.route('/initiate', methods=['POST'])
 def initiate_session():
     url = 'https://everify.bdris.gov.bd'
-
+    
     try:
         session.clear()
         session['requests_session'] = requests.Session()
         session['requests_session'].headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3112.113 Safari/537.36'
         })
-
+        
         response = session['requests_session'].get(url, verify=False, timeout=10)
         response.raise_for_status()
-
+        
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Generate PDF from the page content
-        html_content = response.text
-        pdf_file = HTML(string=html_content).write_pdf()
+        # Extract captcha image
+        captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
+        captcha_img_src = captcha_img_tag['src']
+        captcha_image_url = url + captcha_img_src
 
-        # Save PDF to a file
-        with open('page.pdf', 'wb') as f:
-            f.write(pdf_file)
+        captcha_image = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
+        captcha_image.raise_for_status()
 
-        # Open PDF and extract images
-        doc = fitz.open('page.pdf')
-        images = []
-        for page in doc:
-            for img in page.get_images(full=True):
-                xref = img[0]
-                base_image = doc.extract_image(xref)
-                image_bytes = base_image["image"]
-                image_base64 = base64.b64encode(image_bytes).decode('utf-8')
-                content_type = base_image["ext"]  # Usually png or jpeg
-                images.append(f"data:image/{content_type};base64,{image_base64}")
-
+        content_type = captcha_image.headers['Content-Type']
+        captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
+        
         # Extract hidden inputs
         hidden_inputs = {}
         for hidden_input in soup.find_all("input", type="hidden"):
@@ -57,11 +46,11 @@ def initiate_session():
 
         return jsonify({
             'status': 'captcha_required',
-            'captcha_images': images,
+            'captcha_image': captcha_image_base64,
             'session_id': session.sid,
-            'hidden_inputs': hidden_inputs
+            'hidden_inputs': hidden_inputs  # Include hidden inputs in the response
         })
-
+    
     except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
 
@@ -69,16 +58,16 @@ def initiate_session():
 def submit_form():
     data = request.json
     session_id = data.get('session_id')
-
+    
     if not session_id or 'requests_session' not in session:
         return jsonify({'error': 'Invalid session'}), 400
-
+    
     form_data = {
         'CaptchaInputText': data.get('captcha'),
         'BirthDate': data.get('birth_date'),
         'UBRN': data.get('serial_number')
     }
-
+    
     # Add hidden fields back to form_data
     hidden_inputs = data.get('hidden_inputs', {})
     form_data.update(hidden_inputs)
@@ -95,18 +84,18 @@ def submit_form():
             'Content-Type': 'application/x-www-form-urlencoded',
             'Referer': previous_page_url,
         }
-
+        
         response = session['requests_session'].post(submit_url, data=form_data, headers=headers, verify=False, timeout=10)
         response.raise_for_status()
 
         soup = BeautifulSoup(response.text, 'html.parser')
         main_div = soup.find('div', {'id': 'mainContent'})  # Replace 'mainContent' with actual div ID
-
+        
         return jsonify({
             'status': 'success',
             'content': str(main_div)
         })
-
+    
     except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
 
