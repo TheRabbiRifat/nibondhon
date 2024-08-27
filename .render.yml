@@ -1,11 +1,13 @@
 services:
   - type: web
-    name: captcha-tls-app
-    env: docker
-    plan: free
-    autoDeploy: true
-    region: us
-    timeoutSeconds: 300
+    name: FlaskApp
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:8080 app:app
     envVars:
-      - key: PYTHONHTTPSVERIFY
-        value: "0"
+      - key: SECRET_KEY
+        value: your_secret_key_here
+      - key: SESSION_TYPE
+        value: filesystem
+      - key: PORT
+        value: 8080
