@@ -2,5 +2,5 @@ Flask==2.2.5
 Flask-Session==0.4.0
 requests==2.31.0
 beautifulsoup4==4.12.2
-WeasyPrint==59.0
-PyMuPDF==1.23.3  # Still needed for extracting images from the PDF
+gunicorn==20.1.0
+PyMuPDF==1.21.0  # PyMuPDF used instead of pdfkit for PDF generation
