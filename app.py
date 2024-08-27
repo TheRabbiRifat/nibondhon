@@ -1,8 +1,11 @@
 import base64
 import requests
+import pdfkit
+import fitz  # PyMuPDF
 from flask import Flask, request, jsonify, session
 from flask_session import Session
 from bs4 import BeautifulSoup
+import io
 
 app = Flask(__name__)
 
@@ -28,17 +31,12 @@ def initiate_session():
         
         soup = BeautifulSoup(response.text, 'html.parser')
 
-        # Extract captcha image
-        captcha_img_tag = soup.find('img', {'id': 'CaptchaImage'})
-        captcha_img_src = captcha_img_tag['src']
-        captcha_image_url = url + captcha_img_src
+        # Generate PDF from the page content
+        pdf = pdfkit.from_string(response.text, False)
 
-        captcha_image = session['requests_session'].get(captcha_image_url, verify=False, timeout=10)
-        captcha_image.raise_for_status()
+        # Extract images from the generated PDF
+        images = extract_images_from_pdf(pdf)
 
-        content_type = captcha_image.headers['Content-Type']
-        captcha_image_base64 = f"data:{content_type};base64," + base64.b64encode(captcha_image.content).decode('utf-8')
-        
         # Extract hidden inputs
         hidden_inputs = {}
         for hidden_input in soup.find_all("input", type="hidden"):
@@ -46,13 +44,33 @@ def initiate_session():
 
         return jsonify({
             'status': 'captcha_required',
-            'captcha_image': captcha_image_base64,
+            'images': images,
             'session_id': session.sid,
             'hidden_inputs': hidden_inputs  # Include hidden inputs in the response
         })
     
     except requests.exceptions.RequestException as e:
         return jsonify({'error': 'Request Error', 'details': str(e)}), 500
+
+
+def extract_images_from_pdf(pdf_data):
+    images = []
+    
+    # Use PyMuPDF (fitz) to extract images from the PDF
+    pdf_document = fitz.open(stream=pdf_data, filetype="pdf")
+    
+    for page_index in range(len(pdf_document)):
+        page = pdf_document[page_index]
+        for image_index, img in enumerate(page.get_images(full=True)):
+            xref = img[0]
+            base_image = pdf_document.extract_image(xref)
+            image_bytes = base_image["image"]
+            image_extension = base_image["ext"]
+            image_base64 = f"data:image/{image_extension};base64," + base64.b64encode(image_bytes).decode('utf-8')
+            images.append(image_base64)
+    
+    pdf_document.close()
+    return images
 
 @app.route('/submit', methods=['POST'])
 def submit_form():
